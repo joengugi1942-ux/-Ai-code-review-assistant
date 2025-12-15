@@ -1,0 +1,21 @@
+[project]
+name = "ai-code-review-assistant"
+version = "0.1.0"
+description = "Backend API for an AI-powered code review assistant."
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "openai",
+    "httpx",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+
