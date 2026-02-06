@@ -2,14 +2,30 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    app_name: str = "AI Code Review Assistant"
-    app_env: str = "development"
-    app_host: str = "0.0.0.0"
-    app_port: int = 8000
+    # App
+    app_name: str
+    app_env: str
+    app_host: str
+    app_port: int
 
-    openai_api_key: str | None = None
+    # Database
+    database_url: str
+
+    # Redis
+    redis_url: str | None = None
+
+    # OpenAI
+    openai_api_key: str
+
+    # GitHub
     github_token: str | None = None
 
+    # JWT
+    secret_key: str
+    algorithm: str
+    access_token_expire_minutes: int
+
+    # Logging
     log_level: str = "info"
 
     class Config:
@@ -18,5 +34,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-
