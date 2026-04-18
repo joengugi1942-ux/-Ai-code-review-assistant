@@ -1,7 +1,15 @@
+"""
+Application configuration using Pydantic settings.
+
+Loads configuration from environment variables and .env file.
+"""
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+    
     # App
     app_name: str
     app_env: str

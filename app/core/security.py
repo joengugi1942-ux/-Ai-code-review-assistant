@@ -1,3 +1,11 @@
+"""
+Authentication and security utilities.
+
+Provides API key validation via X-API-Key header, supporting both:
+- Static API key from configuration
+- Database-stored API keys
+"""
+
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
