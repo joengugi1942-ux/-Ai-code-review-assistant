@@ -4,18 +4,41 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
 
 from app.core.config import settings
+from app.db.database import get_db
+from app.services.api_key_service import api_key_service
+from sqlalchemy.ext.asyncio import AsyncSession
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def get_api_key(api_key: Optional[str] = Depends(api_key_header)) -> str:
-    if not api_key or (settings.github_token and api_key != settings.github_token):
+async def get_api_key(
+    api_key: Optional[str] = Depends(api_key_header),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """
+    Validate the API key from the X-API-Key header.
+
+    Checks both:
+    1. Static .env API_KEY (backward compatible)
+    2. Database-stored API keys (generated via admin endpoint)
+
+    Raises 401 if key is missing or invalid.
+    """
+    if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API key",
+            detail="Missing API key",
         )
-    return api_key
 
+    # First, check static config key (backward compatible)
+    if settings.api_key and api_key == settings.api_key:
+        return api_key
 
+    # Second, check database keys
+    if await api_key_service.verify_key(db, api_key):
+        return api_key
 
-
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid API key",
+    )
