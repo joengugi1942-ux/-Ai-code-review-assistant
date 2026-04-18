@@ -12,5 +12,13 @@ async def test_github_service_pr_stub() -> None:
     assert response.issues == []
 
 
+@pytest.mark.asyncio
+async def test_github_service_merged_pr_stub() -> None:
+    service = GithubService()
+    payload = GithubPRRequest(owner="o", repo="r", pr_number=1, pr_state="merged")
+    response = await service.review_pr(payload)
+    assert response.issues == []
+
+
 
 

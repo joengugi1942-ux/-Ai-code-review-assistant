@@ -14,16 +14,22 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str | None = None
 
-    # OpenAI
-    openai_api_key: str
+    # Groq
+    groq_api_key: str
 
     # GitHub
     github_token: str | None = None
 
-    # JWT
-    secret_key: str
-    algorithm: str
-    access_token_expire_minutes: int
+    # API Authentication
+    api_key: str
+
+    # Admin API Key (for generating/managing API keys)
+    admin_api_key: str | None = None
+
+    # JWT (optional - not used currently)
+    secret_key: str | None = None
+    algorithm: str | None = None
+    access_token_expire_minutes: int | None = None
 
     # Logging
     log_level: str = "info"

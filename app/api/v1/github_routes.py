@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_api_key
+from app.core.config import settings
 from app.schemas.github import GithubPRRequest, GithubRepoRequest, GithubReviewResponse
 from app.services.github_service import GithubService
 
@@ -12,7 +13,7 @@ async def review_pull_request(
     payload: GithubPRRequest,
     api_key: str = Depends(get_current_api_key),
 ) -> GithubReviewResponse:
-    service = GithubService()
+    service = GithubService(token=settings.github_token)
     return await service.review_pr(payload)
 
 
@@ -21,7 +22,7 @@ async def review_repository(
     payload: GithubRepoRequest,
     api_key: str = Depends(get_current_api_key),
 ) -> GithubReviewResponse:
-    service = GithubService()
+    service = GithubService(token=settings.github_token)
     return await service.review_repo(payload)
 
 
