@@ -1,11 +1,21 @@
+"""
+AI response parser for converting LLM responses to structured review data.
+"""
+
 from typing import Any
 
 from app.schemas.review import ReviewIssue, ReviewResponse, ReviewSummary
 
 
 class AIResponseParser:
+    """Parses raw LLM responses into ReviewResponse objects."""
+
     def parse_review_response(self, raw: Any) -> ReviewResponse:
-        # Expecting a dict-like structure, but keep defensive
+        """
+        Parse LLM response into ReviewResponse.
+        
+        Expects a dict with 'issues' and 'summary' keys.
+        """
         data = raw or {}
         issues_raw = data.get("issues", [])
         issues: list[ReviewIssue] = []

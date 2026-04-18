@@ -1,3 +1,14 @@
+"""
+AI Code Review Assistant application entry point.
+
+This module creates and configures the FastAPI application with:
+- Review API endpoints for code analysis
+- GitHub API endpoints for repository/PR analysis
+- Admin API endpoints for API key management
+- Automatic database table creation on startup
+- Logging configuration
+"""
+
 from fastapi import FastAPI
 from loguru import logger
 
@@ -10,6 +21,7 @@ logger.add("logs/app.log", rotation="10 MB", retention="7 days", level="INFO")
 
 
 def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
     app = FastAPI(
         title="AI Code Review Assistant",
         version="0.1.0",

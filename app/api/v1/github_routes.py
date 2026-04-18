@@ -1,3 +1,13 @@
+"""
+GitHub API endpoints for repository and pull request analysis.
+
+Provides endpoints to:
+- POST /pr: Analyze a GitHub pull request
+- POST /repo: Analyze a GitHub repository
+
+Requires X-API-Key header for authentication.
+"""
+
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_api_key
@@ -13,6 +23,11 @@ async def review_pull_request(
     payload: GithubPRRequest,
     api_key: str = Depends(get_current_api_key),
 ) -> GithubReviewResponse:
+    """
+    Analyze a GitHub pull request.
+    
+    Fetches PR diff and files, then runs AI code review on the changes.
+    """
     service = GithubService(token=settings.github_token)
     return await service.review_pr(payload)
 
@@ -22,6 +37,11 @@ async def review_repository(
     payload: GithubRepoRequest,
     api_key: str = Depends(get_current_api_key),
 ) -> GithubReviewResponse:
+    """
+    Analyze a GitHub repository.
+    
+    Fetches repository files and runs AI code review on them.
+    """
     service = GithubService(token=settings.github_token)
     return await service.review_repo(payload)
 
