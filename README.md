@@ -31,22 +31,56 @@ All endpoints (except GitHub public endpoints) require an `X-API-Key` header.
 
 ## Quick Start
 
-1. Copy `.env.example` to `.env` and configure:
-   - `DATABASE_URL` - MySQL database connection string
-   - `GROQ_API_KEY` - Your Groq API key
-   - `GITHUB_TOKEN` - GitHub personal access token (optional)
-   - `SECRET_KEY` - JWT secret key
-   - `API_KEY` - Initial API key for access
+> **Project root:** `C:\Users\Hp\New folder (12)\`  
+> The application code lives in `app\` — there is no `aireview\app\` subdirectory.
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 1. Configure environment
 
-3. Run the server:
-   ```bash
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
+```powershell
+Copy-Item .env.example .env
+# Then edit .env and fill in:
+#   DATABASE_URL, GROQ_API_KEY, API_KEY, ADMIN_API_KEY, SECRET_KEY
+```
+
+### 2. Create & activate virtual environment
+
+```powershell
+# Create (one time only)
+python -m venv env311
+
+# Activate manually (PowerShell)
+.\env311\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+> If PowerShell blocks script execution, run once:
+> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+### 3. Start the application
+
+**Windows (PowerShell) — recommended:**
+```powershell
+# Activates venv and starts server in one command
+.\start.ps1
+```
+
+Optional flags:
+```powershell
+.\start.ps1 -Port 9000          # custom port
+.\start.ps1 -NoReload           # disable auto-reload (production)
+.\start.ps1 -Env venv           # use a different venv folder
+```
+
+**Linux / macOS / WSL:**
+```bash
+bash scripts/run_local.sh
+```
+
+Once running, visit:
+- API: http://localhost:8000
+- Interactive docs: http://localhost:8000/docs
 
 ## Configuration
 

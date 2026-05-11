@@ -11,6 +11,7 @@ from app.schemas.github import GithubPRRequest, GithubRepoRequest, GithubReviewR
 from app.schemas.review import ReviewIssue, ReviewSummary, ReviewTarget
 from app.services.github_client import GithubClient
 from app.services.review_engine import ReviewEngine
+from app.utils.language_detect import detect_language
 
 
 class GithubService:
@@ -248,43 +249,8 @@ class GithubService:
         )
 
     def _get_language(self, filename: str) -> str | None:
-        """
-        Detect programming language from file extension.
-        
-        Maps common file extensions to their programming language.
-        This is used to help the LLM provide language-specific suggestions.
-        
-        Args:
-            filename: The file name or path (e.g., "src/utils/helper.py")
-        
-        Returns:
-            Language string (e.g., "python", "javascript") or None if unknown
-        
-        """
-        ext = filename.split(".")[-1] if "." in filename else ""
-        lang_map = {
-            "py": "python",
-            "js": "javascript",
-            "ts": "typescript",
-            "jsx": "javascript",
-            "tsx": "typescript",
-            "go": "go",
-            "rs": "rust",
-            "java": "java",
-            "kt": "kotlin",
-            "rb": "ruby",
-            "php": "php",
-            "cs": "csharp",
-            "cpp": "cpp",
-            "c": "c",
-            "h": "c",
-            "swift": "swift",
-            "yml": "yaml",
-            "yaml": "yaml",
-            "json": "json",
-            "md": "markdown",
-        }
-        return lang_map.get(ext)
+        lang = detect_language(filename)
+        return lang if lang != "unknown" else None
 
     async def review_repo(self, payload: GithubRepoRequest) -> GithubReviewResponse:
         """
