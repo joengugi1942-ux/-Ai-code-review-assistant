@@ -1,6 +1,13 @@
-# AI Code Review Assistant
+<div align="center">
+  <img src="https://img.shields.io/badge/Lapo-AI%20Code%20Review%20Assistant-blue?style=for-the-badge&logo=robot" alt="Lapo Logo">
 
-A FastAPI-based backend for automated AI code review with GitHub integration.
+# 🤖 Meet Lapo
+
+**AI Code Review Assistant** - Lapo is a FastAPI-powered AI Code Review Assistant designed to be your team's digital senior developer. By integrating directly with GitHub, Lapo analyzes pull requests in real-time to ensure your code is performant, secure, and idiomatic.
+
+> *"Lapo doesn't just catch bugs; it helps you become a better coder."*
+
+</div>
 
 ## Features
 
@@ -32,8 +39,8 @@ All endpoints (except GitHub public endpoints) require an `X-API-Key` header.
 ## Quick Start
 
 1. Copy `.env.example` to `.env` and configure:
-   - `DATABASE_URL` - MySQL database connection string
-   - `GROQ_API_KEY` - Your Groq API key
+    - `DATABASE_URL` - Database connection (SQLite default, PostgreSQL recommended for production)
+    - `GROQ_API_KEY` - Your Groq API key
    - `GITHUB_TOKEN` - GitHub personal access token (optional)
    - `SECRET_KEY` - JWT secret key
    - `API_KEY` - Initial API key for access
@@ -56,7 +63,7 @@ All endpoints (except GitHub public endpoints) require an `X-API-Key` header.
 | APP_ENV | Environment | development |
 | APP_HOST | Server host | 0.0.0.0 |
 | APP_PORT | Server port | 8000 |
-| DATABASE_URL | MySQL connection string | - |
+| DATABASE_URL | SQLite/PostgreSQL connection string | sqlite+aiosqlite:///./ai_review.db |
 | REDIS_URL | Redis connection (optional) | redis://localhost:6379/0 |
 | GROQ_API_KEY | Groq API key for LLM | - |
 | GITHUB_TOKEN | GitHub PAT for API access | - |
