@@ -43,7 +43,7 @@ RELOAD_FLAG=""
 [ "$RELOAD" = "1" ] && RELOAD_FLAG="--reload"
 
 echo ""
-echo "Starting AI Code Review Assistant"
+echo "Starting Lapo - AI Code Review Assistant"
 echo "  URL  : http://localhost:$PORT"
 echo "  Docs : http://localhost:$PORT/docs"
 echo "  Env  : ${APP_ENV:-development}"

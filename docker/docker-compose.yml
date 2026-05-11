@@ -2,15 +2,20 @@ version: "3.9"
 
 services:
   api:
+    container_name: lapo-api
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    image: lapo:latest
     ports:
       - "${APP_PORT:-8000}:8000"
     env_file:
       - ../.env
     environment:
       - APP_ENV=production
+    labels:
+      - "com.lapo.description=Lapo - AI Code Review Assistant"
+      - "com.lapo.version=0.1.0"
     restart: unless-stopped
     volumes:
       - ../logs:/app/logs
