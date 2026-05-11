@@ -27,7 +27,7 @@ async def wait_for_database(max_retries: int = 10, check_tables: bool = False) -
     Optionally verifies that tables exist.
     Returns True if connected (and tables exist if check_tables=True), False if max retries exceeded.
     """
-    from sqlalchemy import text  # Import here to avoid circular if needed
+    from sqlalchemy import text
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -37,15 +37,18 @@ async def wait_for_database(max_retries: int = 10, check_tables: bool = False) -
 
                 # Optionally verify tables exist
                 if check_tables:
-                    result = await conn.execute(
-                        text(
-                            "SELECT COUNT(*) FROM information_schema.tables "
-                            "WHERE table_schema = DATABASE()"
-                        )
-                    )
-                    table_count = result.scalar_one()
-                    if table_count == 0:
-                        raise Exception("Database connected but no tables exist")
+                    from sqlalchemy import inspect
+
+                    def _check_tables(conn):
+                        insp = inspect(conn)
+                        table_names = set(insp.get_table_names())
+                        expected_tables = {table.name for table in Base.metadata.sorted_tables}
+                        missing = expected_tables - table_names
+                        if missing:
+                            raise Exception(f"Database connected but tables missing: {missing}")
+                        return True
+
+                    await conn.run_sync(_check_tables)
 
             if attempt == 1:
                 logger.info("✓ Database connected")
@@ -81,18 +84,20 @@ async def init_database(verify: bool = True) -> bool:
             await conn.run_sync(Base.metadata.create_all)
 
         if verify:
-            # Verify tables were created
+            # Verify tables were created using SQLAlchemy inspector (dialect-agnostic)
+            from sqlalchemy import inspect
+
+            def _verify_tables(conn):
+                insp = inspect(conn)
+                table_names = set(insp.get_table_names())
+                expected_tables = {table.name for table in Base.metadata.sorted_tables}
+                missing = expected_tables - table_names
+                if missing:
+                    raise Exception(f"Tables not created after initialization: {missing}")
+                return True
+
             async with engine.begin() as conn:
-                from sqlalchemy import text
-                result = await conn.execute(
-                    text(
-                        "SELECT COUNT(*) FROM information_schema.tables "
-                        "WHERE table_schema = DATABASE()"
-                    )
-                )
-                table_count = result.scalar_one()
-                if table_count == 0:
-                    raise Exception("Tables were not created after initialization")
+                await conn.run_sync(_verify_tables)
 
         logger.info("✓ Database tables initialized")
         return True
