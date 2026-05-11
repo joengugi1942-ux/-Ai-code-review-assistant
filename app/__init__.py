@@ -1,1 +1,1 @@
-"""AI Code Review Assistant application package."""
+"""Lapo - AI Code Review Assistant application package."""

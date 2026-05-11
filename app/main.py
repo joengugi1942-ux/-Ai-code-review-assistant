@@ -15,22 +15,22 @@ logger.add("logs/app.log", rotation="10 MB", retention="7 days", level="INFO")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    logger.info("Starting application...")
+    logger.info("Starting Lapo...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Application started successfully")
+    logger.info("Lapo started successfully")
     yield
     # Close persistent httpx client in GithubService singleton
     from app.api.deps import get_github_service
     svc = get_github_service()
     await svc.github_client.aclose()
     await engine.dispose()
-    logger.info("Application shutdown complete")
+    logger.info("Lapo shutdown complete")
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="AI Code Review Assistant",
+        title="Lapo",
         version="0.1.0",
         debug=settings.app_env == "development",
         lifespan=lifespan,
