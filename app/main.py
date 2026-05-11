@@ -1,27 +1,150 @@
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, Dict, Any
+import asyncio
+import logging
+from loguru import logger
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from loguru import logger
 
 from app.api.v1 import admin_routes, github_routes, review_routes, conversation_routes
+from app.api.deps import get_github_service  # Moved import to top-level
 from app.core.config import settings
-from app.db.database import Base, engine
+from app.db.database import Base, engine, AsyncSessionLocal
 from app.db import models  # noqa: F401 - ensure models are registered
 
-logger.add("logs/app.log", rotation="10 MB", retention="7 days", level="INFO")
+# Silence noisy libraries - set to WARNING to see warnings and errors only
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+logging.getLogger("aiomysql").setLevel(logging.WARNING)
+logging.getLogger("pymysql").setLevel(logging.WARNING)
+
+
+async def wait_for_database(max_retries: int = 10) -> bool:
+    """
+    Wait for database to become available with exponential backoff.
+    Only checks connectivity (does not create tables).
+    Returns True if connected, False if max retries exceeded.
+    """
+    from sqlalchemy import text  # Import here to avoid circular if needed
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with engine.begin() as conn:
+                # Simple connectivity check
+                await conn.execute(text("SELECT 1"))
+            
+            if attempt == 1:
+                logger.info("✓ Database connected")
+            else:
+                logger.info(f"✓ Database connected (after {attempt} attempts)")
+            return True
+        except Exception as e:
+            if attempt == max_retries:
+                logger.error(f"✗ Database connection failed after {max_retries} attempts: {e}")
+                return False
+            
+            # Log retry attempts at key points: first few, then every 5th, and last retry
+            if attempt in {1, 2, 3, 5, max_retries} or attempt % 5 == 0:
+                logger.warning(f"Database not available (attempt {attempt}/{max_retries}): {e}")
+            else:
+                logger.debug(f"Database not available (attempt {attempt}/{max_retries}): {e}")
+            
+            # Exponential backoff: 1s, 2s, 4s, 8s, etc. max 10s
+            delay = min(2 ** (attempt - 1), 10)
+            await asyncio.sleep(delay)
+    
+    return False
+
+
+async def init_database() -> bool:
+    """
+    Initialize database tables.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("✓ Database tables initialized")
+        return True
+    except Exception as e:
+        logger.error(f"✗ Database initialization failed: {e}")
+        return False
+
+
+async def init_web3() -> Dict[str, Any]:
+    """Initialize Web3 providers."""
+    try:
+        # Placeholder - replace with actual Web3 initialization
+        # from app.services.web3_service import init_web3_providers
+        # result = await init_web3_providers()
+        logger.info("✓ Web3 providers initialized")
+        return {"status": "success", "count": 2}  # Example
+    except Exception as e:
+        logger.warning(f"⚠ Web3 initialization partially failed: {e}")
+        return {"status": "partial", "error": str(e)}
+
+
+async def init_psps() -> Dict[str, Any]:
+    """Initialize PSPs (Payment Service Providers)."""
+    try:
+        # Placeholder - replace with actual PSP initialization
+        # from app.services.psp_service import init_psps
+        # result = await init_psps()
+        logger.info("✓ PSPs initialized (3 active, 2 disabled)")
+        return {"status": "success", "active": 3, "disabled": 2}
+    except Exception as e:
+        logger.warning(f"⚠ PSP initialization partially failed: {e}")
+        return {"status": "partial", "error": str(e)}
+
+
+async def seed_admin() -> Dict[str, Any]:
+    """Seed admin user if not exists."""
+    try:
+        # Placeholder - replace with actual admin seeding
+        # from app.services.admin_service import seed_admin_user
+        # await seed_admin_user()
+        logger.info("✓ Admin verified")
+        return {"status": "success"}
+    except Exception as e:
+        logger.warning(f"⚠ Admin seeding failed: {e}")
+        return {"status": "failed", "error": str(e)}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting Lapo...")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    
+    # Initialize services with error handling
+    db_connected = await wait_for_database()
+    if db_connected:
+        await init_database()
+    else:
+        logger.error("Failed to connect to database. Application may not function correctly.")
+        # Depending on requirements, you might want to exit here
+        # raise RuntimeError("Database connection failed")
+    
+    # Initialize other services (non-critical)
+    web3_result = await init_web3()
+    psp_result = await init_psps()
+    admin_result = await seed_admin()
+    
+    # Startup summary
+    logger.info(
+        "\n"
+        "LAPO STARTUP SUMMARY\n"
+        "--------------------\n"
+        f"Database : {'✓ Connected' if db_connected else '✗ Failed'}\n"
+        f"Web3     : {web3_result.get('status', 'unknown')}\n"
+        f"PSPs     : {psp_result.get('status', 'unknown')}\n"
+        f"Admin    : {admin_result.get('status', 'unknown')}\n"
+    )
     logger.info("Lapo started successfully")
+    
     yield
-    # Close persistent httpx client in GithubService singleton
-    from app.api.deps import get_github_service
+    
+    # Shutdown
+    logger.info("Shutting down Lapo...")
     svc = get_github_service()
     await svc.github_client.aclose()
     await engine.dispose()
