@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+LABEL com.lapo.description="Lapo - AI Code Review Assistant"
+LABEL com.lapo.version="0.1.0"
+
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1

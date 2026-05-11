@@ -1,6 +1,7 @@
-# AI Code Review Assistant
+# 🤖 Meet Lapo
+Lapo is a FastAPI-powered AI Code Review Assistant designed to be your team's digital senior developer. By integrating directly with GitHub, Lapo analyzes pull requests in real-time to ensure your code is performant, secure, and idiomatic.
 
-A FastAPI-based backend for automated AI code review with GitHub integration.
+"Lapo doesn't just catch bugs; it helps you become a better coder."
 
 ## Features
 
@@ -86,7 +87,7 @@ Once running, visit:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| APP_NAME | Application name | AI Code Review Assistant |
+| APP_NAME | Application name | Lapo |
 | APP_ENV | Environment | development |
 | APP_HOST | Server host | 0.0.0.0 |
 | APP_PORT | Server port | 8000 |
