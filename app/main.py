@@ -20,20 +20,33 @@ logging.getLogger("aiomysql").setLevel(logging.WARNING)
 logging.getLogger("pymysql").setLevel(logging.WARNING)
 
 
-async def wait_for_database(max_retries: int = 10) -> bool:
+async def wait_for_database(max_retries: int = 10, check_tables: bool = False) -> bool:
     """
     Wait for database to become available with exponential backoff.
-    Only checks connectivity (does not create tables).
-    Returns True if connected, False if max retries exceeded.
+    Only checks connectivity by default (does not create tables).
+    Optionally verifies that tables exist.
+    Returns True if connected (and tables exist if check_tables=True), False if max retries exceeded.
     """
     from sqlalchemy import text  # Import here to avoid circular if needed
-    
+
     for attempt in range(1, max_retries + 1):
         try:
             async with engine.begin() as conn:
                 # Simple connectivity check
                 await conn.execute(text("SELECT 1"))
-            
+
+                # Optionally verify tables exist
+                if check_tables:
+                    result = await conn.execute(
+                        text(
+                            "SELECT COUNT(*) FROM information_schema.tables "
+                            "WHERE table_schema = DATABASE()"
+                        )
+                    )
+                    table_count = result.scalar_one()
+                    if table_count == 0:
+                        raise Exception("Database connected but no tables exist")
+
             if attempt == 1:
                 logger.info("✓ Database connected")
             else:
@@ -43,28 +56,44 @@ async def wait_for_database(max_retries: int = 10) -> bool:
             if attempt == max_retries:
                 logger.error(f"✗ Database connection failed after {max_retries} attempts: {e}")
                 return False
-            
+
             # Log retry attempts at key points: first few, then every 5th, and last retry
             if attempt in {1, 2, 3, 5, max_retries} or attempt % 5 == 0:
                 logger.warning(f"Database not available (attempt {attempt}/{max_retries}): {e}")
             else:
                 logger.debug(f"Database not available (attempt {attempt}/{max_retries}): {e}")
-            
+
             # Exponential backoff: 1s, 2s, 4s, 8s, etc. max 10s
             delay = min(2 ** (attempt - 1), 10)
             await asyncio.sleep(delay)
-    
+
     return False
 
 
-async def init_database() -> bool:
+async def init_database(verify: bool = True) -> bool:
     """
     Initialize database tables.
     Returns True if successful, False otherwise.
+    If verify is True, also checks that tables were created.
     """
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+
+        if verify:
+            # Verify tables were created
+            async with engine.begin() as conn:
+                from sqlalchemy import text
+                result = await conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM information_schema.tables "
+                        "WHERE table_schema = DATABASE()"
+                    )
+                )
+                table_count = result.scalar_one()
+                if table_count == 0:
+                    raise Exception("Tables were not created after initialization")
+
         logger.info("✓ Database tables initialized")
         return True
     except Exception as e:
@@ -114,35 +143,42 @@ async def seed_admin() -> Dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting Lapo...")
-    
+
     # Initialize services with error handling
     db_connected = await wait_for_database()
+    db_initialized = False
     if db_connected:
-        await init_database()
+        db_initialized = await init_database()
+        if not db_initialized:
+            logger.error("Failed to initialize database tables. Application may not function correctly.")
+            # Depending on requirements, you might want to exit here
+            # raise RuntimeError("Database initialization failed")
     else:
         logger.error("Failed to connect to database. Application may not function correctly.")
         # Depending on requirements, you might want to exit here
         # raise RuntimeError("Database connection failed")
-    
+
     # Initialize other services (non-critical)
     web3_result = await init_web3()
     psp_result = await init_psps()
     admin_result = await seed_admin()
-    
+
     # Startup summary
+    db_status = "✓ Connected & Initialized" if (db_connected and db_initialized) else \
+                "✓ Connected" if db_connected else "✗ Failed"
     logger.info(
         "\n"
         "LAPO STARTUP SUMMARY\n"
         "--------------------\n"
-        f"Database : {'✓ Connected' if db_connected else '✗ Failed'}\n"
+        f"Database : {db_status}\n"
         f"Web3     : {web3_result.get('status', 'unknown')}\n"
         f"PSPs     : {psp_result.get('status', 'unknown')}\n"
         f"Admin    : {admin_result.get('status', 'unknown')}\n"
     )
     logger.info("Lapo started successfully")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Lapo...")
     svc = get_github_service()
