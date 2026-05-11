@@ -1,14 +1,8 @@
-"""
-LLM client for AI-powered code review using Groq.
-
-Uses the Llama model to analyze code and detect issues.
-"""
-
+import json
 from typing import Any
 
 from groq import AsyncGroq
 
-from app.ai.response_parser import AIResponseParser
 from app.core.config import settings
 from app.schemas.review import ReviewRequest
 from app.services.prompt_builder import PromptBuilder
@@ -20,16 +14,11 @@ class LLMClient:
     def __init__(self) -> None:
         self._client = AsyncGroq(api_key=settings.groq_api_key)
         self._prompt_builder = PromptBuilder()
-        self._parser = AIResponseParser()
 
     async def review_code(self, payload: ReviewRequest) -> dict[str, Any]:
-        """
-        Send code to LLM for review.
-        
-        Builds a prompt, sends to Groq Llama model, and returns parsed response.
-        """
+        """Send code to LLM and return the raw JSON dict for the caller to parse."""
         prompt = self._prompt_builder.build_review_prompt(payload)
-        
+
         completion = await self._client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -49,9 +38,6 @@ class LLMClient:
             max_tokens=2048,
             response_format={"type": "json_object"},
         )
-        
+
         content = completion.choices[0].message.content
-        import json
-        
-        data = json.loads(content) if content else {}
-        return self._parser.parse_review_response(data).model_dump()
+        return json.loads(content) if content else {}

@@ -6,10 +6,11 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - ../.env
     environment:
       - APP_ENV=production
-
-
-
-
+    restart: unless-stopped
+    volumes:
+      - ../logs:/app/logs
