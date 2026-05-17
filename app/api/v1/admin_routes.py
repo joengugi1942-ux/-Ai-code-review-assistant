@@ -9,6 +9,8 @@ Provides endpoints to:
 Requires X-Admin-Key header for authentication.
 """
 
+import hmac
+
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from loguru import logger
 from pydantic import BaseModel
@@ -34,7 +36,7 @@ async def verify_admin(admin_key: str = Header(..., alias="X-Admin-Key")) -> str
             detail="Admin API key not configured on server",
         )
 
-    if admin_key != settings.admin_api_key:
+    if not hmac.compare_digest(admin_key, settings.admin_api_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid admin API key",
