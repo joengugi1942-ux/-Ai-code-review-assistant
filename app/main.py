@@ -2,9 +2,10 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any
 import asyncio
 import logging
+import time
 from loguru import logger
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import admin_routes, github_routes, review_routes, conversation_routes
@@ -207,6 +208,15 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start = time.monotonic()
+        logger.info(f"→ {request.method} {request.url.path}")
+        response = await call_next(request)
+        ms = (time.monotonic() - start) * 1000
+        logger.info(f"← {request.method} {request.url.path} {response.status_code} ({ms:.0f}ms)")
+        return response
 
     app.include_router(review_routes.router, prefix="/api/v1/review", tags=["review"])
     app.include_router(github_routes.router, prefix="/api/v1/github", tags=["github"])

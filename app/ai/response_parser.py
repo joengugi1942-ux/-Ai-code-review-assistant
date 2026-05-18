@@ -4,6 +4,8 @@ AI response parser for converting LLM responses to structured review data.
 
 from typing import Any
 
+from loguru import logger
+
 from app.schemas.review import ReviewIssue, ReviewResponse, ReviewSummary
 
 
@@ -24,14 +26,18 @@ class AIResponseParser:
         """
         data = raw or {}
         issues_raw = data.get("issues", [])
+        logger.debug(f"[ResponseParser] Parsing {len(issues_raw)} raw issue(s)")
         issues: list[ReviewIssue] = []
-        
+
         for item in issues_raw:
             issue = self._parse_issue(item)
             issues.append(issue)
-        
+
         summary = self._build_summary(issues, data.get("summary"))
-        
+        logger.debug(
+            f"[ResponseParser] Parsed {len(issues)} issue(s) — score={summary.score}, "
+            f"counts={summary.issue_count_by_severity}"
+        )
         return ReviewResponse(issues=issues, summary=summary)
 
     def _parse_issue(self, item: dict[str, Any]) -> ReviewIssue:
