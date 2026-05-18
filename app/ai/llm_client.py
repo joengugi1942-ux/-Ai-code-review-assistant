@@ -49,12 +49,17 @@ class LLMClient:
             response_format={"type": "json_object"},
         )
 
-        content = completion.choices[0].message.content
         usage = completion.usage
         logger.info(
             f"[LLMClient] Response received — "
             f"{usage.prompt_tokens} prompt tokens, {usage.completion_tokens} completion tokens"
         )
+
+        if not completion.choices:
+            logger.error("[LLMClient] Groq returned empty choices list")
+            return {}
+
+        content = completion.choices[0].message.content
         logger.debug(f"[LLMClient] Raw response: {len(content or '')} chars")
 
         return json.loads(content) if content else {}

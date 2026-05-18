@@ -104,8 +104,15 @@ class GithubService:
             payload.owner, payload.repo, payload.pr_number
         )
         
-        base_sha = payload.base_sha or pr_details.get("base", {}).get("sha")
-        head_sha = payload.head_sha or pr_details.get("head", {}).get("sha")
+        real_base = pr_details.get("base", {}).get("sha")
+        real_head = pr_details.get("head", {}).get("sha")
+
+        # Only use payload SHAs if they look like real SHAs (40 hex chars)
+        def _is_sha(v: str | None) -> bool:
+            return bool(v and len(v) == 40 and all(c in "0123456789abcdefABCDEF" for c in v))
+
+        base_sha = payload.base_sha if _is_sha(payload.base_sha) else real_base
+        head_sha = payload.head_sha if _is_sha(payload.head_sha) else real_head
 
         logger.debug(f"Using base_sha={base_sha}, head_sha={head_sha}")
         
@@ -241,17 +248,45 @@ class GithubService:
 
             review_request = ReviewRequest(targets=targets)
             review_response = await self.review_engine.review_code(review_request)
-            issues = review_response.issues
+            issues = self._filter_issues(review_response.issues)
             logger.info(f"Found {len(issues)} issues in {len(targets)} files")
 
         return GithubReviewResponse(
             issues=issues,
-            summary=ReviewSummary(summary=f"Reviewed {len(targets)} files"),
+            summary=self._build_summary(issues, len(targets)),
         )
 
     def _get_language(self, filename: str) -> str | None:
         lang = detect_language(filename)
         return lang if lang != "unknown" else None
+
+    _CONFIDENCE_FLOOR = 0.65
+
+    def _filter_issues(self, issues: list[ReviewIssue]) -> list[ReviewIssue]:
+        before = len(issues)
+        filtered = [i for i in issues if (i.confidence or 0) >= self._CONFIDENCE_FLOOR]
+        dropped = before - len(filtered)
+        if dropped:
+            logger.debug(f"[Filter] Dropped {dropped} low-confidence issue(s) (threshold={self._CONFIDENCE_FLOOR})")
+        return filtered
+
+    def _build_summary(self, issues: list[ReviewIssue], file_count: int) -> ReviewSummary:
+        counts = {s: 0 for s in ("critical", "high", "medium", "low", "info")}
+        for issue in issues:
+            sev = issue.severity if issue.severity in counts else "low"
+            counts[sev] += 1
+        score = float(max(0, 100 - sum(SEVERITY_SCORES.get(i.severity, 0) for i in issues)))
+        total = len(issues)
+        text = (
+            f"Reviewed {file_count} file(s). No issues found."
+            if total == 0
+            else f"Reviewed {file_count} file(s). Found {total} issue(s)."
+        )
+        return ReviewSummary(
+            score=score,
+            summary=text,
+            issue_count_by_severity=counts if any(counts.values()) else None,
+        )
 
     _REVIEWABLE_EXTENSIONS = {
         ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", ".php",
@@ -375,32 +410,11 @@ class GithubService:
                     summary=ReviewSummary(summary="Could not fetch file contents from repository"),
                 )
 
-            issues = await self._review_in_batches(targets)
+            issues = self._filter_issues(await self._review_in_batches(targets))
+            summary = self._build_summary(issues, len(targets))
+            logger.info(f"Repo review complete: {len(issues)} issue(s) across {len(targets)} files, score={summary.score}")
 
-            severity_counts: dict[str, int] = {}
-            for issue in issues:
-                sev = issue.severity.lower()
-                severity_counts[sev] = severity_counts.get(sev, 0) + 1
-
-            total = len(issues)
-            score = float(max(0, 100 - sum(SEVERITY_SCORES.get(i.severity, 0) for i in issues)))
-
-            summary_text = (
-                f"Reviewed {len(targets)} files. No issues found."
-                if total == 0
-                else f"Reviewed {len(targets)} files. Found {total} issue(s)."
-            )
-
-            logger.info(f"Repo review complete: {total} issues across {len(targets)} files")
-
-            return GithubReviewResponse(
-                issues=issues,
-                summary=ReviewSummary(
-                    score=score,
-                    summary=summary_text,
-                    issue_count_by_severity=severity_counts or None,
-                ),
-            )
+            return GithubReviewResponse(issues=issues, summary=summary)
 
         except Exception as e:
             logger.error(f"Failed to review repo: {e}")
