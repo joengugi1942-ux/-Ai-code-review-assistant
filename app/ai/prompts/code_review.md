@@ -16,7 +16,8 @@ You MUST respond with JSON in the following format:
       "category": "security",
       "message": "What is wrong",
       "suggestion": "Concrete fix",
-      "confidence": 0.8
+      "confidence": 0.8,
+      "code_snippet": "exact line(s) of code that have the issue"
     }
   ],
   "summary": {
@@ -40,7 +41,8 @@ For EVERY issue you find, you MUST follow this structure:
 - **DO NOT** return generic advice like "improve code quality" or "make code better"
 - **DO NOT** return vague suggestions like "consider improving" without specifics
 - All suggestions MUST be specific and actionable
-- Each issue MUST have: file, line (if applicable), severity, message, suggestion
+- Each issue MUST have: file, line (if applicable), severity, message, suggestion, code_snippet
+- `code_snippet` MUST contain the exact offending line(s) of code copied verbatim from the file
 
 ## Severity Definitions (STRICT - Follow Carefully)
 
@@ -100,7 +102,8 @@ Calculate overall score:
   "category": "security",
   "message": "Hardcoded API key found in source code",
   "suggestion": "Replace with: import os; api_key = os.environ.get('API_KEY')",
-  "confidence": 0.95
+  "confidence": 0.95,
+  "code_snippet": "api_key = 'sk-1234abcdef'"
 }
 ```
 

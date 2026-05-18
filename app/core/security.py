@@ -10,6 +10,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
+from loguru import logger
 
 from app.core.config import settings
 from app.db.database import get_db
@@ -33,6 +34,7 @@ async def get_api_key(
     Raises 401 if key is missing or invalid.
     """
     if not api_key:
+        logger.warning("[Auth] Request rejected — missing X-API-Key header")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing API key",
@@ -40,12 +42,15 @@ async def get_api_key(
 
     # First, check static config key (backward compatible)
     if settings.api_key and api_key == settings.api_key:
+        logger.debug("[Auth] Authenticated via static config key")
         return api_key
 
     # Second, check database keys
     if await api_key_service.verify_key(db, api_key):
+        logger.debug("[Auth] Authenticated via database key")
         return api_key
 
+    logger.warning(f"[Auth] Request rejected — invalid API key (prefix: {api_key[:6]}...)")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API key",

@@ -7,6 +7,7 @@ Supports both open and merged pull requests, with fallback handling for various 
 
 from loguru import logger
 
+from app.ai.response_parser import SEVERITY_SCORES
 from app.schemas.github import GithubPRRequest, GithubRepoRequest, GithubReviewResponse
 from app.schemas.review import ReviewIssue, ReviewSummary, ReviewTarget
 from app.services.github_client import GithubClient
@@ -252,27 +253,158 @@ class GithubService:
         lang = detect_language(filename)
         return lang if lang != "unknown" else None
 
+    _REVIEWABLE_EXTENSIONS = {
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rb", ".php",
+        ".c", ".cpp", ".h", ".cs", ".swift", ".kt", ".rs", ".scala", ".sh",
+        ".yaml", ".yml", ".json", ".toml", ".sql", ".html", ".css",
+    }
+    _MAX_FILES = 50
+    _MAX_FILE_SIZE = 100_000          # bytes — skip files larger than this
+    _MAX_FILE_CHARS = 3_000           # truncate file content to ~750 tokens each
+    _BATCH_CHARS_BUDGET = 28_000      # ~7,000 tokens per batch (leaves room for prompt + 2048 response)
+
+    def _is_reviewable(self, path: str) -> bool:
+        import os
+        _, ext = os.path.splitext(path.lower())
+        return ext in self._REVIEWABLE_EXTENSIONS
+
+    def _truncate(self, target: ReviewTarget) -> ReviewTarget:
+        if len(target.content) <= self._MAX_FILE_CHARS:
+            return target
+        return ReviewTarget(
+            filename=target.filename,
+            language=target.language,
+            content=target.content[: self._MAX_FILE_CHARS] + "\n... [truncated]",
+        )
+
+    def _make_batches(self, targets: list[ReviewTarget]) -> list[list[ReviewTarget]]:
+        batches: list[list[ReviewTarget]] = []
+        current: list[ReviewTarget] = []
+        chars = 0
+        for t in targets:
+            if current and chars + len(t.content) > self._BATCH_CHARS_BUDGET:
+                batches.append(current)
+                current, chars = [t], len(t.content)
+            else:
+                current.append(t)
+                chars += len(t.content)
+        if current:
+            batches.append(current)
+        return batches
+
+    async def _review_in_batches(self, targets: list[ReviewTarget]) -> list[ReviewIssue]:
+        from app.schemas.review import ReviewRequest
+
+        truncated = [self._truncate(t) for t in targets]
+        batches = self._make_batches(truncated)
+        logger.info(f"Reviewing {len(targets)} files in {len(batches)} batch(es)")
+
+        all_issues: list[ReviewIssue] = []
+        for i, batch in enumerate(batches, 1):
+            try:
+                response = await self.review_engine.review_code(ReviewRequest(targets=batch))
+                all_issues.extend(response.issues)
+                logger.debug(f"Batch {i}/{len(batches)}: {len(response.issues)} issue(s)")
+            except Exception as e:
+                logger.warning(f"Batch {i}/{len(batches)} failed: {e}")
+        return all_issues
+
     async def review_repo(self, payload: GithubRepoRequest) -> GithubReviewResponse:
         """
-        Analyze a GitHub repository.
-        
-        This endpoint is intended for full repository analysis, but is
-        not yet implemented. Returns an informative response.
-        
+        Analyze a GitHub repository by fetching its file tree and reviewing code files.
+
         Args:
-            payload: Request object containing:
-                - owner: Repository owner
-                - repo: Repository name
-                - branch: Optional branch name (defaults to default branch)
-                - path: Optional path to analyze (defaults to root)
-        
+            payload: Request with owner, repo, optional branch, optional path prefix.
+                     If path looks like a URL it is ignored.
+
         Returns:
-            GithubReviewResponse with empty issues and "not implemented" summary
-        
-        TODO:
-            - Implement repository traversal
-            - Add support for branch selection
-            - Add path filtering for specific directories
-            - Handle large repositories with pagination
+            GithubReviewResponse with found issues and a scored summary.
         """
-        return GithubReviewResponse(issues=[], summary=ReviewSummary(summary="Repo review not implemented"))
+        try:
+            branch = payload.branch
+            if not branch:
+                branch = await self.github_client.get_default_branch(payload.owner, payload.repo)
+
+            logger.info(f"Reviewing repo {payload.owner}/{payload.repo} on branch {branch}")
+
+            commit_sha, tree_sha = await self.github_client.get_branch_tree_sha(
+                payload.owner, payload.repo, branch
+            )
+
+            tree = await self.github_client.get_tree(payload.owner, payload.repo, tree_sha)
+
+            path_prefix = payload.path
+            if path_prefix and path_prefix.startswith("http"):
+                path_prefix = None
+
+            candidates = [
+                item for item in tree
+                if item.get("type") == "blob"
+                and self._is_reviewable(item.get("path", ""))
+                and (not path_prefix or item.get("path", "").startswith(path_prefix))
+                and (item.get("size") or 0) <= self._MAX_FILE_SIZE
+            ][: self._MAX_FILES]
+
+            if not candidates:
+                return GithubReviewResponse(
+                    issues=[],
+                    summary=ReviewSummary(summary="No reviewable files found in repository"),
+                )
+
+            targets: list[ReviewTarget] = []
+            for item in candidates:
+                file_path = item.get("path", "")
+                try:
+                    content = await self.github_client.get_file_content(
+                        payload.owner, payload.repo, file_path, commit_sha
+                    )
+                    if content:
+                        targets.append(
+                            ReviewTarget(
+                                filename=file_path,
+                                language=self._get_language(file_path),
+                                content=content,
+                            )
+                        )
+                except Exception as e:
+                    logger.warning(f"Skipping {file_path}: {e}")
+
+            if not targets:
+                return GithubReviewResponse(
+                    issues=[],
+                    summary=ReviewSummary(summary="Could not fetch file contents from repository"),
+                )
+
+            issues = await self._review_in_batches(targets)
+
+            severity_counts: dict[str, int] = {}
+            for issue in issues:
+                sev = issue.severity.lower()
+                severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+            total = len(issues)
+            score = float(max(0, 100 - sum(SEVERITY_SCORES.get(i.severity, 0) for i in issues)))
+
+            summary_text = (
+                f"Reviewed {len(targets)} files. No issues found."
+                if total == 0
+                else f"Reviewed {len(targets)} files. Found {total} issue(s)."
+            )
+
+            logger.info(f"Repo review complete: {total} issues across {len(targets)} files")
+
+            return GithubReviewResponse(
+                issues=issues,
+                summary=ReviewSummary(
+                    score=score,
+                    summary=summary_text,
+                    issue_count_by_severity=severity_counts or None,
+                ),
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to review repo: {e}")
+            return GithubReviewResponse(
+                issues=[],
+                summary=ReviewSummary(summary=f"Error reviewing repository: {str(e)}"),
+            )
